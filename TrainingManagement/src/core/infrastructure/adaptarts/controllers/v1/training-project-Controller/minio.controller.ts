@@ -32,11 +32,11 @@ export class MinioController {
 
   @Get(':filePath')
   async getFile(@Param('filePath') filePath: string) {
-    console.log(filePath);
+    //console.log(filePath);
 
     const bucketName = 'michimoney-media-images-dev'; // Asegúrate de que el bucket existe
     const url = await this.minioService.getFile(bucketName, filePath);
-    console.log('es link de controller' + url);
+    //console.log('es link de controller' + url);
     return { url }; // Devuelve la URL para acceder al archivo
   }
 }

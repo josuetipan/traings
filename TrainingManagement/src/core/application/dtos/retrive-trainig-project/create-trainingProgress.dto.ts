@@ -4,10 +4,6 @@ import { IsNumber, IsString, IsUUID } from 'class-validator';
 export class CreateTrainingProgresDto {
   @IsString()
   @IsUUID()
-  idProgress?: string;
-
-  @IsString()
-  @IsUUID()
   idUser?: string;
 
   @IsString()

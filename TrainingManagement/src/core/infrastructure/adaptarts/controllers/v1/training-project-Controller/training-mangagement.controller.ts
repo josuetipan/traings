@@ -18,6 +18,8 @@ import { TrainingManagementService } from 'src/core/application/services/trainin
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiResponse } from '@nestjs/swagger';
 import { apiExceptionConfig } from 'src/utils/api/apiExceptionConfig';
+import { CreateTrainingProgresDto } from 'src/core/application/dtos/retrive-trainig-project/create-trainingProgress.dto';
+import { CreateContentProgressDto } from 'src/core/application/dtos/retrive-trainig-project/create-contentProgress.dto';
 
 @Controller()
 @UseGuards(CheckDatabaseConnectionGuard)
@@ -31,9 +33,27 @@ export class TrainingManagementController {
     @Query('roleCode') roleCode: string,
   ) {
     console.log(userId, roleCode);
-    return this.trainingManagementService.getTrainingByRoleAndUser(
+    return this.trainingManagementService.findTrainingByIdRoleAndIdUser(
       userId,
       roleCode,
+    );
+  }
+
+  @Post('/createprogresstraining')
+  async createTrainingProgress(
+    @Body() responseTrainingProgressDto: CreateTrainingProgresDto,
+  ) {
+    return this.trainingManagementService.createTrainingProgress(
+      responseTrainingProgressDto,
+    );
+  }
+
+  @Post('/createcontentprogress')
+  async createContentProgress(
+    @Body() responseTrainingContentProgressDto: CreateContentProgressDto,
+  ) {
+    return this.trainingManagementService.createContentProgress(
+      responseTrainingContentProgressDto,
     );
   }
 }

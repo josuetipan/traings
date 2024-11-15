@@ -1,21 +1,18 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 //import { LoggerService } from '../loggger/logger.service';
-import { CreateContentProgressDto } from '../../dtos/training-dto/create-contentProgress.dto';
-import { CreateTrainingProgresDto } from '../../dtos/training-dto/create-trainingProgress.dto';
+import { CreateContentProgressDto } from '../../dtos/retrive-trainig-project/create-contentProgress.dto';
+import { CreateTrainingProgresDto } from '../../dtos/retrive-trainig-project/create-trainingProgress.dto';
 import { CreateQuizResultDto } from '../../dtos/quizzz-dto/create-createquizresults.dto';
 import { apiBaseEntityName } from 'src/utils/api/apiEntites';
 import { LoggerKafkaService } from '../../loggger/loggerKafka.service';
 import { Injectable } from '@nestjs/common';
 import { MinioService as MinioClient } from 'nestjs-minio-client';
-import {
-  TrainingContentDTO,
-  TrainingResponseDTO,
-  TrainingSectionDTO,
-} from '../../dtos/training-dto/response-trainingRol.dto';
 import { users } from '@prisma/client';
 import { connect } from 'http2';
 import { MinioService } from './minio.service';
+import { time } from 'console';
+import { TrainingResponseDTO } from '../../dtos/retrive-trainig-project/response-trainingRol.dto';
 //Si quieres usar el logger de kafka
 //import { LoggerKafkaService } from '../loggger/loggerKafka.service';
 
@@ -24,108 +21,114 @@ export class TrainingManagementService {
   private minioClient: MinioClient;
   constructor(
     private prisma: PrismaService,
-    private logger: LoggerKafkaService,
     private controller: MinioService,
     //Usando el logger de kafka
     //private logger: LoggerService, //Usando el logger simple (No usa kafka)
   ) {}
 
-  async getTrainingByRoleAndUser(
-    idUser: string,
-    codeRole: string,
-  ): Promise<TrainingResponseDTO> {
-    const role = await this.prisma.roles.findFirst({
-      where: { code_role: codeRole },
-    });
-
-    if (!role) throw new Error('Role not found');
-
-    const trainingProgress = await this.prisma.training_progress.findFirst({
-      where: {
-        id_user: idUser,
-        trainings: { id_role: role.id_role },
-      },
+  async findTrainingByIdRoleAndIdUser(
+    idRoles: string,
+    IdUSer,
+  ): Promise<TrainingResponseDTO[]> {
+    const trainingFirstPrincipal = await this.prisma.trainings.findMany({
       include: {
-        trainings: {
+        training_progress: true,
+        training_sections: {
           include: {
-            training_sections: {
+            training_contents: {
               include: {
-                training_contents: {
-                  include: {
-                    user_content_progress: true,
-                  },
+                user_content_progress: {
+                  select: { is_completed: true },
                 },
               },
-              orderBy: { order_section: 'asc' },
             },
           },
         },
       },
     });
 
-    if (!trainingProgress)
-      throw new Error(
-        'Training progress not found for the specified user and role',
+    if (!trainingFirstPrincipal) {
+      throw new NotFoundException(
+        `Training with role ${idRoles} and user ${IdUSer} was not found. Please verify the role and user and try again`,
       );
+    }
+    try {
+      const trainingImages = await this.images();
+      const trainingData = trainingFirstPrincipal.map((mapig, index) => {
+        return {
+          idTraining: mapig.id_training,
+          titleTraining: mapig.title_training,
+          description: mapig.description,
+          idStatus: mapig.id_status,
+          progressPercentage: mapig?.training_progress?.reduce(
+            (acc, cur) => acc + cur.progress_percentage,
+            0,
+          ),
+          idCurrentSection: mapig.training_sections?.find((s) =>
+            s.training_contents.find((c) => c.user_content_progress.length > 0),
+          )
+            ? mapig.training_sections.find((s) =>
+                s.training_contents.find(
+                  (c) => c.user_content_progress.length > 0,
+                ),
+              ).id_training_section
+            : null,
 
-    const trainingData = trainingProgress.trainings;
+          idCurrentContent: mapig.training_sections?.find((s) =>
+            s.training_contents.find((c) => c.user_content_progress.length > 0),
+          )
+            ? mapig.training_sections
+                .find((s) =>
+                  s.training_contents.find(
+                    (c) => c.user_content_progress.length > 0,
+                  ),
+                )
+                .training_contents.find(
+                  (c) => c.user_content_progress.length > 0,
+                ).id_training_content
+            : null,
+          sections: mapig.training_sections?.map((s, sectionIndex) => {
+            return {
+              idTrainingSection: s.id_training_section || '',
+              titleSection: s.title_section,
+              orderSection: s.order_section,
+              contents: s.training_contents.map((c, contentIndex) => {
+                const imageIndex =
+                  index * mapig.training_sections.length +
+                  sectionIndex * s.training_contents.length +
+                  contentIndex;
+                console.warn(c.user_content_progress);
+                return {
+                  idTrainingContent: c.id_training_content,
+                  isCompleted: c.user_content_progress[0]?.is_completed || null,
+                  titleContent: c.title_content,
+                  description: c.description,
+                  link: trainingImages[imageIndex],
+                };
+              }),
+            };
+          }),
+        };
+      });
 
-    const traings = await this.images();
-    // Map data to DTO
-    const sections: TrainingSectionDTO[] = trainingData.training_sections.map(
-      (section, index) => ({
-        idTrainingSection: section.id_training_section,
-        titleSection: section.title_section,
-        orderSection: section.order_section,
-        contents: section.training_contents
-          ? [
-              {
-                idTrainingContent:
-                  section.training_contents.id_training_content,
-                isCompleted:
-                  section.training_contents.user_content_progress?.some(
-                    (progress) =>
-                      progress.id_user === idUser && progress.is_completed,
-                  ) ?? false,
-                titleContent: section.training_contents.title_content,
-                description: section.training_contents.description,
-                link: traings[index],
-              },
-            ]
-          : [],
-      }),
-    );
-    const trainingResponse: TrainingResponseDTO = {
-      idTraining: trainingData.id_training,
-      titleTraining: trainingData.title_training,
-      description: trainingData.description,
-      idStatus: trainingData.id_status,
-      progressPercentage: trainingProgress.progress_percentage,
-      idCurrentSection: trainingProgress.id_current_section,
-      idCurrentContent: trainingProgress.id_current_content,
-      sections,
-    };
-
-    return trainingResponse;
+      return trainingData;
+    } catch (error) {
+      throw new Error('Aqui esta el error ' + error);
+    }
   }
 
   async images() {
-    const images = await this.prisma.training_contents.findMany({});
-
-    const imagesResponse = images.map((pkg) => {
-      return {
-        imageUrl: pkg.link,
-      };
+    const images = await this.prisma.training_contents.findMany({
+      select: { link: true },
     });
-    const back = 'michimoney-media-images-dev';
-    const imagesLinks: string[] = [];
-
-    for (let i = 0; i < imagesResponse.length; i++) {
-      const im = imagesResponse[i].imageUrl;
-      const links = await this.controller.getFile(back, im);
+    const back = process.env.MINIO_BUCKET_IMAGEN;
+    const imagesLinks = [];
+    for await (const { link } of images) {
+      const links = await this.controller.getFile(back, link);
       imagesLinks.push(links);
     }
 
+    console.error(imagesLinks);
     return imagesLinks;
   }
   //---------------------------
@@ -133,16 +136,14 @@ export class TrainingManagementService {
   async createContentProgress(
     createContentProgressDto: CreateContentProgressDto,
   ) {
-    const { idContentProgress, idTrainingContent, idUser, isCompleted } =
-      createContentProgressDto;
+    const { idTrainingContent, idUser, isCompleted } = createContentProgressDto;
 
-    await this.validateIdContentProgressExist(idContentProgress);
     await this.validateIdTrainingContent(idTrainingContent);
     await this.validateIdUser(idUser);
+    await this.validateIdContentProgressExist(idTrainingContent, idUser);
 
     await this.prisma.user_content_progress.create({
       data: {
-        id_content_progress: idContentProgress,
         id_training_content: idTrainingContent,
         id_user: idUser,
         is_completed: isCompleted,
@@ -180,11 +181,12 @@ export class TrainingManagementService {
     }
   }
 
-  async validateIdContentProgressExist(id: string) {
+  async validateIdContentProgressExist(id: string, iduser: string) {
     const idContentProgressExist =
-      await this.prisma.user_content_progress.findUnique({
+      await this.prisma.user_content_progress.findFirst({
         where: {
-          id_content_progress: id,
+          id_training_content: id,
+          id_user: iduser,
         },
       });
 
@@ -228,7 +230,6 @@ export class TrainingManagementService {
     responseTrainingProgressDto: CreateTrainingProgresDto,
   ) {
     const {
-      idProgress,
       idUser,
       idTraining, //
       idStatus,
@@ -241,11 +242,10 @@ export class TrainingManagementService {
     await this.validateIdTrainingSection(idTrainingSection);
     await this.validateIdStatus(idStatus);
     await this.validateIdTraining(idTraining);
-    await this.validateIdTrainingProgress(idProgress);
+    await this.validateTrainingProgressByUser(idUser, idTraining);
 
     await this.prisma.training_progress.create({
       data: {
-        id_training_progress: idProgress,
         id_user: idUser,
         id_training: idTraining,
         id_status: idStatus,
@@ -294,6 +294,20 @@ export class TrainingManagementService {
     if (!idResultExist) {
       throw new ConflictException(
         `Training with ID ${id} was not found. Please verify the ID and try again`,
+      );
+    }
+  }
+  async validateTrainingProgressByUser(isUser: string, idTraining: string) {
+    const idResultExist = await this.prisma.training_progress.findFirst({
+      where: {
+        id_user: isUser,
+        id_training: idTraining,
+      },
+    });
+
+    if (idResultExist) {
+      throw new ConflictException(
+        `Training progress record with user ID ${isUser}, training ID ${idTraining}, was not found. Please verify the IDs and try again.`,
       );
     }
   }

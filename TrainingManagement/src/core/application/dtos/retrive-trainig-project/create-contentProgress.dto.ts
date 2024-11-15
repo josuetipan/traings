@@ -4,11 +4,6 @@ export class CreateContentProgressDto {
   @IsNotEmpty()
   @IsString()
   @IsUUID()
-  idContentProgress: string;
-
-  @IsNotEmpty()
-  @IsString()
-  @IsUUID()
   idTrainingContent: string;
 
   @IsNotEmpty()

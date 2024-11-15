@@ -9,13 +9,11 @@ export class MinioService {
 
   constructor() {
     this.minioClient = new MinioClient({
-      endPoint: process.env.MINIO_ENDPOINT || '192.168.100.221', // Cambia esto si usas otro host
-      port: parseInt(process.env.MINIO_PORT) || 32482,
+      endPoint: process.env.MINIO_ENDPOINT,
+      port: parseInt(process.env.MINIO_PORT),
       useSSL: true,
-      accessKey: process.env.MINIO_ACCESS_KEY || '20nyWZBRvBnoUpqcfzZ3',
-      secretKey:
-        process.env.MINIO_SECRET_KEY ||
-        'obJCkGeGJZSeWfqGeVzTy0z2Y7Lj88GzWC7jW9G4',
+      accessKey: process.env.MINIO_ACCESS_KEY,
+      secretKey: process.env.MINIO_SECRET_KEY,
       transportAgent: new https.Agent({
         rejectUnauthorized: false,
       }),
@@ -28,7 +26,7 @@ export class MinioService {
     contentType: string,
   ): Promise<string> {
     const filePath = `${Date.now()}_${file.originalname}`;
-    console.log('est es el path: ' + filePath);
+    // console.log('est es el path: ' + filePath);
     const metaData = {
       'Content-Type': contentType,
     };
@@ -48,7 +46,7 @@ export class MinioService {
       filePath,
       24 * 60 * 60,
     ); // URL válida por 24 horas
-    console.log('este es el link de servicio: ' + url);
+    //console.log('este es el link de servicio: ' + url);
     return url; // Devuelve la URL para acceder al archivo
   }
 }
